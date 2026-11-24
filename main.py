@@ -1,63 +1,60 @@
-"""Funniest Time Machine Warning Label entry.
+#!/usr/bin/env python3
+"""Funniest Time Machine Warning Label -- make.fun entry program.
 
-Writes the single warning label to /output/entry.txt and to entry.txt
-next to this script, with no trailing newline.
+Reads the single warning label from entry.txt next to this script,
+validates it against the competition gate, and writes it byte-for-byte
+to $MAKEFUN_OUTPUT_DIR/entry.txt.
 
-The entry must pass the house gate: UTF-8 text of 1 to 120 characters,
-exactly one line, and not only whitespace. Nothing here is random or
-time-dependent: every run writes byte-identical output.
+Gate (RULES.txt): output must be UTF-8 text of 1 to 120 characters,
+not only white space.
 """
 
 import os
+import sys
 
-ENTRY = "WARNING: Do not change the past. The warranty does not cover paradoxes, dinosaurs, or your grandfather."
-
-
-def validate_entry(entry):
-    """Check the gate: UTF-8 text, 1-120 characters, one line, not only whitespace.
-
-    Raises ValueError naming the exact rule that failed, so a bad entry
-    is caught here with a readable reason instead of failing the gate.
-    Returns the entry unchanged when it passes every check.
-    """
-    if not isinstance(entry, str):
-        raise ValueError("entry must be a str, got %s" % type(entry).__name__)
-    try:
-        entry.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise ValueError("entry is not encodable as UTF-8: %s" % exc) from exc
-    if len(entry) < 1:
-        raise ValueError("entry must not be empty")
-    if len(entry) > 120:
-        raise ValueError(
-            "entry must be at most 120 characters, got %d" % len(entry)
-        )
-    if "\n" in entry or "\r" in entry:
-        raise ValueError("entry must be a single line, no line breaks allowed")
-    if not entry.strip():
-        raise ValueError("entry must not be only whitespace")
-    return entry
+MAX_CHARS = 120
 
 
-def write_and_verify(path, data):
-    """Write bytes to path, read them back, and fail hard if they differ."""
-    with open(path, "wb") as f:
-        f.write(data)
-    with open(path, "rb") as f:
-        back = f.read()
-    if back != data:
-        raise RuntimeError("verification failed for %s: wrote %d bytes, read %d bytes" % (path, len(data), len(back)))
-    return path
+def main() -> int:
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(here, "entry.txt")
 
+    with open(src, "rb") as fh:
+        raw = fh.read()
+    text = raw.decode("utf-8")  # strict: raises on invalid UTF-8
 
-def main():
-    validate_entry(ENTRY)
-    data = ENTRY.encode("utf-8")
-    os.makedirs("/output", exist_ok=True)
-    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.txt")
-    for target in ("/output/entry.txt", here):
-        write_and_verify(target, data)
+    # The entry is one warning label: a single line, no embedded newline.
+    if "\n" in text.rstrip("\n") or "\r" in text:
+        print("gate: entry must be a single line", file=sys.stderr)
+        return 1
+    # A single trailing newline in the source file is not part of the label.
+    text = text.rstrip("\n")
+    if text.encode("utf-8") != raw.rstrip(b"\n"):
+        print("gate: entry did not round-trip as UTF-8", file=sys.stderr)
+        return 1
+
+    # Gate: 1 to 120 characters, not only white space.
+    if not (1 <= len(text) <= MAX_CHARS):
+        print(f"gate: entry is {len(text)} chars, must be 1..{MAX_CHARS}",
+              file=sys.stderr)
+        return 1
+    if not text.strip():
+        print("gate: entry is only white space", file=sys.stderr)
+        return 1
+
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if not out_dir:
+        print("MAKEFUN_OUTPUT_DIR is not set", file=sys.stderr)
+        return 1
+
+    os.makedirs(out_dir, exist_ok=True)
+    dst = os.path.join(out_dir, "entry.txt")
+    with open(dst, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+
+    print(f"wrote {len(text)} chars to {dst}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
